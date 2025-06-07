@@ -12,7 +12,7 @@ import (
 	"liangyuanguo/aw/blob/internal/utils"
 	model2 "liangyuanguo/aw/blob/pkg/model"
 	"log"
-	"mime/multipart"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -71,65 +71,88 @@ func NewS3BlobService() *S3Service {
 	}
 }
 
-func (s *S3Service) UploadFile(fileHeader *multipart.FileHeader) (*model2.Blob, error) {
-	if fileHeader.Size > config.Config.MaxUploadSize {
-		return nil, fmt.Errorf("文件大小超过限制 %d 字节", config.Config.MaxUploadSize)
-	}
-
+func (s *S3Service) UploadFile(fileName string, ctx *gin.Context) (*model2.Blob, error) {
+	// 1. 生成存储路径和唯一ID
 	fileID := utils.GenerateID()
-	ext := filepath.Ext(fileHeader.Filename)
-	fileName := fileID + ext
-	minioKey := filepath.Join(config.Config.S3.Prefix, fileName)
+	ext := filepath.Ext(fileName)
+	minioKey := filepath.Join(config.Config.S3.Prefix, fileID+ext)
 
-	file, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("无法打开上传的文件: %v", err)
-	}
-	defer func(file multipart.File) {
-		err := file.Close()
+	// 2. 初始化流式处理器
+	hash := md5.New()
+	pr, pw := io.Pipe() // 创建管道用于流式传输
+	defer func(pr *io.PipeReader) {
+		err := pr.Close()
 		if err != nil {
 
 		}
-	}(file)
+	}(pr)
 
-	// 计算 MD5 哈希
-	hash := md5.New()
-	tee := io.TeeReader(file, hash)
+	// 3. 限制请求体大小
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, config.Config.MaxUploadSize)
 
-	// 上传文件到 MinIO
-	_, err = s.client.PutObject(
+	// 4. 并行处理：流式读取请求体并计算MD5
+	var uploadErr error
+	var uploadedSize int64
+	go func() {
+		defer func(pw *io.PipeWriter) {
+			err := pw.Close()
+			if err != nil {
+
+			}
+		}(pw)
+		// 使用TeeReader同时写入hash和管道
+		tee := io.TeeReader(ctx.Request.Body, hash)
+		uploadedSize, uploadErr = io.Copy(pw, tee)
+	}()
+
+	// 5. 上传到MinIO/S3（流式）
+	_, err := s.client.PutObject(
 		context.Background(),
 		s.bucket,
 		minioKey,
-		tee,
-		fileHeader.Size,
+		pr, // 注意：这里使用管道的读取端
+		-1, // 未知大小，设为-1
 		minio.PutObjectOptions{
-			ContentType: fileHeader.Header.Get("Content-Type"),
+			ContentType: ctx.GetHeader("Content-Type"),
 		},
 	)
-	if err != nil {
-		return nil, fmt.Errorf("上传到 MinIO 失败: %v", err)
+
+	// 6. 错误处理
+	if err != nil || uploadErr != nil {
+		if err == nil {
+			err = uploadErr
+		}
+		return nil, fmt.Errorf("上传失败: %v", err)
 	}
 
-	md5Sum := hex.EncodeToString(hash.Sum(nil))
+	// 7. 构建文件元数据
+	contentType := ctx.GetHeader("Content-Type")
+	if contentType == "" {
+		contentType = mime.TypeByExtension(ext)
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+	}
 
 	fileMeta := &model2.Blob{
 		ID:          fileID,
-		Name:        fileHeader.Filename,
-		Size:        fileHeader.Size,
-		MD5:         md5Sum,
+		Name:        fileName,
+		Size:        uploadedSize,
 		Path:        minioKey,
-		ContentType: fileHeader.Header.Get("Content-Type"),
+		MD5:         hex.EncodeToString(hash.Sum(nil)),
+		ContentType: contentType,
 		UploadTime:  time.Now(),
 	}
 
+	// 8. 保存元数据到数据库
 	if err := s.db.Create(fileMeta).Error; err != nil {
+		// 回滚：尝试删除已上传的文件
+		_ = s.client.RemoveObject(context.Background(), s.bucket, minioKey, minio.RemoveObjectOptions{})
 		return nil, fmt.Errorf("保存文件信息失败: %v", err)
 	}
 
 	return fileMeta, nil
 }
-
 func (s *S3Service) DownloadFile(c *gin.Context, fileID string) error {
 	var fileMeta model2.Blob
 	if err := s.db.First(&fileMeta, "id = ?", fileID).Error; err != nil {

@@ -4,18 +4,18 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"io"
 	"liangyuanguo/aw/blob/internal/config"
 	"liangyuanguo/aw/blob/internal/utils"
 	model2 "liangyuanguo/aw/blob/pkg/model"
 	"liangyuanguo/aw/blob/pkg/service"
-	"mime/multipart"
+	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 type LocalService struct {
@@ -30,27 +30,13 @@ func NewLocalService() service.BlobService {
 	return &LocalService{db: utils.DB}
 }
 
-func (s *LocalService) UploadFile(fileHeader *multipart.FileHeader) (*model2.Blob, error) {
-	if fileHeader.Size > config.Config.MaxUploadSize {
-		return nil, fmt.Errorf("file size exceeds the limit of %d bytes", config.Config.MaxUploadSize)
-	}
-
+func (s *LocalService) UploadFile(fileName string, ctx *gin.Context) (*model2.Blob, error) {
+	// 1. 创建目标文件路径
 	fileID := utils.GenerateID()
-	ext := filepath.Ext(fileHeader.Filename)
-	fileName := fileID + ext
-	filePath := filepath.Join(config.Config.Local.UploadDir, fileName)
+	ext := filepath.Ext(fileName)
+	filePath := filepath.Join(config.Config.Local.UploadDir, fileID+ext)
 
-	src, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open uploaded file: %v", err)
-	}
-	defer func(src multipart.File) {
-		err := src.Close()
-		if err != nil {
-
-		}
-	}(src)
-
+	// 2. 打开目标文件
 	dst, err := os.Create(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create destination file: %v", err)
@@ -62,24 +48,41 @@ func (s *LocalService) UploadFile(fileHeader *multipart.FileHeader) (*model2.Blo
 		}
 	}(dst)
 
+	// 3. 初始化流式处理器
 	hash := md5.New()
-	multiWriter := io.MultiWriter(dst, hash)
+	multiWriter := io.MultiWriter(dst, hash) // 同时写入文件和计算MD5
 
-	if _, err := io.Copy(multiWriter, src); err != nil {
-		return nil, fmt.Errorf("failed to save file: %v", err)
+	// 4. 限制请求体大小并流式拷贝
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, config.Config.MaxUploadSize)
+	written, err := io.Copy(multiWriter, ctx.Request.Body)
+	if err != nil {
+		_ = os.Remove(filePath) // 失败时清理文件
+		if strings.Contains(err.Error(), "request body too large") {
+			return nil, fmt.Errorf("file size exceeds the limit of %d bytes", config.Config.MaxUploadSize)
+		}
+		return nil, fmt.Errorf("stream copy failed: %v", err)
 	}
 
-	md5Sum := hex.EncodeToString(hash.Sum(nil))
+	// 5. 获取Content-Type（优先用Header，其次根据扩展名推断）
+	contentType := ctx.GetHeader("Content-Type")
+	if contentType == "" {
+		contentType = mime.TypeByExtension(ext)
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+	}
 
+	// 6. 构建文件记录
 	file := &model2.Blob{
 		ID:          fileID,
-		Name:        fileHeader.Filename,
-		Size:        fileHeader.Size,
+		Name:        fileName,
+		Size:        written, // 实际写入的字节数
 		Path:        filepath.Base(filePath),
-		MD5:         md5Sum,
-		ContentType: fileHeader.Header.Get("Content-Type"),
+		MD5:         hex.EncodeToString(hash.Sum(nil)),
+		ContentType: contentType,
 	}
 
+	// 7. 保存元数据到数据库
 	if err := s.db.Create(file).Error; err != nil {
 		_ = os.Remove(filePath)
 		return nil, fmt.Errorf("failed to save file info: %v", err)

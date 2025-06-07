@@ -20,13 +20,13 @@ func NewBlobController(fileService service.BlobService) *BlobController {
 }
 
 func (c *BlobController) Upload(ctx *gin.Context) {
-	file, err := ctx.FormFile("file")
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	fileName := ctx.Param("id")
+	if fileName == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "file name is required"})
 		return
 	}
-
-	uploadedFile, err := c.blobService.UploadFile(file)
+	
+	uploadedFile, err := c.blobService.UploadFile(fileName, ctx)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -97,7 +97,7 @@ func RegisterBlobController(router *gin.RouterGroup, fileService service.BlobSer
 	authRequired := router.Group("/blobs")
 	authRequired.Use(middleware.JWTAuthMiddleware(utils.NewJWTUtil()))
 	{
-		authRequired.POST("", blobController.Upload)
+		authRequired.POST("/:id", blobController.Upload)
 		authRequired.GET("", blobController.ListFiles)
 		authRequired.DELETE("/:id", blobController.Delete)
 	}
