@@ -51,9 +51,11 @@ type SnowflakeConfig struct {
 }
 
 type HttpConfig struct {
-	Port   int    `yaml:"port"`
-	Host   string `yaml:"host"`
-	Prefix string `yaml:"prefix"`
+	Port         int    `yaml:"port"`
+	Host         string `yaml:"host"`
+	Prefix       string `yaml:"prefix"`
+	StaticDir    string `yaml:"staticDir"`
+	StaticPrefix string `yaml:"staticPrefix"`
 }
 
 var Config *config

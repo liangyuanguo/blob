@@ -3,12 +3,12 @@
 # 最大上传大小(字节)
 maxUploadSize: 104857600  # 100MB
 
-# 运行模式 (local 或 s3)
+# 运行模式 (none、 local、 s3)
 mode: "local"
 
 # 本地存储配置
 local:
-  uploadDir: "C:/Users/russionbear/Documents/GitHub/aw/blob/upload"  # 上传文件存储目录
+  uploadDir: &uploadDir "C:/Users/russionbear/Documents/GitHub/aw/blob/upload"  # 上传文件存储目录
 
 # MYSQL 数据库配置
 db:
@@ -43,3 +43,5 @@ http:
   prefix: "/api"  # 路由前缀
   port: 8080      # 服务端口
   host: "" # 监听地址
+  staticDir: *uploadDir  # 静态文件目录
+  staticPrefix: "/api/static"  # 静态文件前缀

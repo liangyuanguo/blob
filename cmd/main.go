@@ -18,6 +18,8 @@ func main() {
 
 	// 创建Gin路由
 	router := gin.Default()
+	router.Static(config.Config.Http.StaticPrefix, config.Config.Http.StaticDir)
+
 	var rootRouter *gin.RouterGroup
 
 	if config.Config.Http.Prefix != "" {
@@ -26,10 +28,14 @@ func main() {
 		rootRouter = &router.RouterGroup
 	}
 
-	if config.Config.Mode == "s3" {
-		controller.RegisterBlobController(rootRouter, service.NewS3BlobService())
-	} else {
+	switch config.Config.Mode {
+	case "local":
 		controller.RegisterBlobController(rootRouter, service.NewLocalService())
+	case "s3":
+		controller.RegisterBlobController(rootRouter, service.NewS3BlobService())
+	case "none":
+	default:
+		log.Fatalf("Invalid mode: %s", config.Config.Mode)
 	}
 
 	// 启动服务器

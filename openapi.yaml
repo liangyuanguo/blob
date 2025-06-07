@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.0.1
 info:
   title: liangyuanguo
   description: ''
@@ -123,10 +123,25 @@ paths:
                 properties: {}
           headers: {}
       security: []
+  /static/1931262966640939008.txt:
+    get:
+      summary: GetStatic
+      deprecated: false
+      description: ''
+      tags: []
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            '*/*':
+              schema:
+                type: object
+                properties: {}
+          headers: {}
+      security: []
 components:
   schemas: {}
   securitySchemes: {}
-servers:
-  - url: http://localhost:8080/api
-    description: 开发环境
+servers: []
 security: []
