@@ -1,0 +1,9 @@
+
+.idea
+.vscode
+db.sqlite3
+go.sum
+upload
+bin
+
+

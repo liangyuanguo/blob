@@ -1,0 +1,45 @@
+# config.yaml 示例配置
+
+# 最大上传大小(字节)
+maxUploadSize: 104857600  # 100MB
+
+# 运行模式 (local 或 s3)
+mode: "local"
+
+# 本地存储配置
+local:
+  uploadDir: "C:/Users/russionbear/Documents/GitHub/aw/blob/upload"  # 上传文件存储目录
+
+# MYSQL 数据库配置
+db:
+  dbName: "blob"      # 数据库名称
+  username: "root"      # 数据库用户名
+  password: "mysql"   # 数据库密码
+  host: localhost
+  port: 3306             # 数据库端口
+
+# S3/MinIO 存储配置
+s3:
+  ak: "minioadmin"       # 访问密钥
+  sk: "minioadmin"       # 秘密密钥
+  useSSL: false          # 是否使用SSL
+  region: "us-east-1"    # 区域
+  bucket: "my-bucket"    # 存储桶名称
+  endpoint: "localhost:9000"  # 终端节点
+  prefix: "uploads"      # 文件前缀路径
+
+# JWT 认证配置
+jwt:
+  secret: ""  # JWT密钥，空调过验证
+  expire: 86400  # token有效期(秒) - 24小时
+
+# Snowflake ID生成器配置
+snowflake:
+  workerID: 1     # 工作节点ID
+  dataCenterID: 1 # 数据中心ID
+
+# HTTP服务器配置
+http:
+  prefix: "/api"  # 路由前缀
+  port: 8080      # 服务端口
+  host: "" # 监听地址

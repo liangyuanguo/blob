@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  title: liangyuanguo
+  description: ''
+  version: 1.0.0
+tags: []
+paths:
+  /blobs/1931262966640939008.txt:
+    get:
+      summary: GetBlob
+      deprecated: false
+      description: ''
+      tags: []
+      parameters: []
+      responses:
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+          headers: {}
+      security: []
+  /blobs:
+    post:
+      summary: UploadBlob
+      deprecated: false
+      description: ''
+      tags: []
+      parameters: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  format: binary
+                  type: string
+                  example: >-
+                    file://C:\Users\russionbear\Documents\GitHub\aw\blob\test\1.txt
+            examples: {}
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  path:
+                    type: string
+                  size:
+                    type: integer
+                required:
+                  - id
+                  - name
+                  - path
+                  - size
+          headers: {}
+      security: []
+  /blobs/:
+    get:
+      summary: QueryBlob
+      deprecated: false
+      description: ''
+      tags: []
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        path:
+                          type: string
+                        uploadTime:
+                          type: string
+                        md5:
+                          type: string
+                        contentType:
+                          type: string
+                required:
+                  - data
+          headers: {}
+      security: []
+  /blobs/1931265153181945856.txt:
+    delete:
+      summary: DeleteBlob
+      deprecated: false
+      description: ''
+      tags: []
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+          headers: {}
+      security: []
+components:
+  schemas: {}
+  securitySchemes: {}
+servers:
+  - url: http://localhost:8080/api
+    description: 开发环境
+security: []
