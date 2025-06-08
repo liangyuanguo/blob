@@ -5,7 +5,7 @@ info:
   version: 1.0.0
 tags: []
 paths:
-  /blobs/1931262966640939008.txt:
+  /blobs/1931607228851163136:
     get:
       summary: GetBlob
       deprecated: false
@@ -26,7 +26,6 @@ paths:
                   - error
           headers: {}
       security: []
-  /blobs:
     post:
       summary: UploadBlob
       deprecated: false
@@ -35,16 +34,11 @@ paths:
       parameters: []
       requestBody:
         content:
-          multipart/form-data:
+          application/octet-stream:
             schema:
-              type: object
-              properties:
-                file:
-                  format: binary
-                  type: string
-                  example: >-
-                    file://C:\Users\russionbear\Documents\GitHub\aw\blob\test\1.txt
-            examples: {}
+              type: string
+              format: binary
+            example: file://C:\Users\russionbear\Documents\GitHub\aw\blob\README.md
       responses:
         '200':
           description: ''
@@ -68,13 +62,47 @@ paths:
                   - size
           headers: {}
       security: []
+    put:
+      summary: PutBlob
+      deprecated: false
+      description: ''
+      tags: []
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+            example:
+              name: name2
+              desc: hihi
+              contentType: application/octet-stream
+              categories: 4v4
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+          headers: {}
+      security: []
   /blobs/:
     get:
       summary: QueryBlob
       deprecated: false
       description: ''
       tags: []
-      parameters: []
+      parameters:
+        - name: q[categories]
+          in: query
+          description: ''
+          required: false
+          example: kw=4v4&
+          schema:
+            type: string
       responses:
         '200':
           description: ''
@@ -143,5 +171,7 @@ paths:
 components:
   schemas: {}
   securitySchemes: {}
-servers: []
+servers:
+  - url: http://localhost:8080/api
+    description: 开发环境
 security: []

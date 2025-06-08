@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"liangyuanguo/aw/blob/internal/config"
 	"liangyuanguo/aw/blob/internal/controller"
+	"liangyuanguo/aw/blob/internal/repository"
 	"liangyuanguo/aw/blob/internal/service"
 	"liangyuanguo/aw/blob/internal/utils"
 	"log"
@@ -30,8 +31,10 @@ func main() {
 
 	switch config.Config.Mode {
 	case "local":
+		repository.RegisterMetaStorage(repository.NewBleveMetaStorage(config.Config.Db.BleveDir))
 		controller.RegisterBlobController(rootRouter, service.NewLocalService())
 	case "s3":
+		repository.RegisterMetaStorage(repository.NewBleveMetaStorage(config.Config.Db.BleveDir))
 		controller.RegisterBlobController(rootRouter, service.NewS3BlobService())
 	case "none":
 	default:

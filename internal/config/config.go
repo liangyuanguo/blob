@@ -22,11 +22,7 @@ type LocalConfig struct {
 }
 
 type DbConfig struct {
-	DbName   string `yaml:"dbName"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-	Host     string `yaml:"host"`
-	Port     string `yaml:"port"`
+	BleveDir string `yaml:"bleveDir"`
 }
 
 type S3Config struct {

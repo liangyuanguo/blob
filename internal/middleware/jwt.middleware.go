@@ -19,6 +19,7 @@ const (
 func JWTAuthMiddleware(jwtUtil *utils.JWTUtil) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if config.Config.Jwt.Secret == "" {
+			c.Set("uid", "")
 			c.Next()
 			return
 		}
@@ -53,7 +54,7 @@ func JWTAuthMiddleware(jwtUtil *utils.JWTUtil) gin.HandlerFunc {
 		}
 
 		// 解析和验证token
-		_, err := jwtUtil.ParseToken(tokenString)
+		claims, err := jwtUtil.ParseToken(tokenString)
 		if err != nil {
 			status := http.StatusUnauthorized
 			if errors.Is(err, utils.ErrExpiredToken) {
@@ -67,7 +68,7 @@ func JWTAuthMiddleware(jwtUtil *utils.JWTUtil) gin.HandlerFunc {
 		}
 
 		//// 将用户信息存入上下文
-		//c.Set("user_id", claims.UserID)
+		c.Set("uid", claims.Uid)
 		//c.Set("username", claims.Username)
 
 		c.Next()

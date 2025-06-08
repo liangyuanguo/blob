@@ -23,7 +23,8 @@ func NewJWTUtil() *JWTUtil {
 
 // CustomClaims 自定义Claims结构
 type CustomClaims struct {
-	Meta any `json:"meta"`
+	Uid  string `json:"uid"`
+	Meta any    `json:"meta"`
 	jwt.RegisteredClaims
 }
 

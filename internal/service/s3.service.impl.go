@@ -6,10 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"io"
 	"liangyuanguo/aw/blob/internal/config"
-	"liangyuanguo/aw/blob/internal/utils"
+	"liangyuanguo/aw/blob/internal/repository"
 	model2 "liangyuanguo/aw/blob/pkg/model"
 	"log"
 	"mime"
@@ -24,7 +23,7 @@ import (
 type S3Service struct {
 	client *minio.Client
 	bucket string
-	db     *gorm.DB
+	meta   repository.IMetaStorage
 }
 
 func NewS3BlobService() *S3Service {
@@ -60,22 +59,22 @@ func NewS3BlobService() *S3Service {
 		log.Printf("存储桶 %s 创建成功", config.Config.S3.Bucket)
 	}
 
-	err = utils.InitDB()
-	if err != nil {
-		panic(err)
-	}
 	return &S3Service{
 		client: minioClient,
 		bucket: config.Config.S3.Bucket,
-		db:     utils.DB, // 假设你有一个获取数据库连接的方法
+		meta:   repository.MetaStorage,
 	}
 }
 
-func (s *S3Service) UploadFile(fileName string, ctx *gin.Context) (*model2.Blob, error) {
+func (s *S3Service) Upload(uid string, fileID string, ctx *gin.Context) (*model2.Blob, error) {
+	blobMeta, err := s.meta.Get(fileID)
+	if err != nil || (blobMeta.AuthorId != uid && uid != "") {
+		return nil, fmt.Errorf("获取文件信息失败: %v", err)
+	}
+
 	// 1. 生成存储路径和唯一ID
-	fileID := utils.GenerateID()
-	ext := filepath.Ext(fileName)
-	minioKey := filepath.Join(config.Config.S3.Prefix, fileID+ext)
+	ext := filepath.Ext(blobMeta.Name)
+	minioKey := filepath.Join(config.Config.S3.Prefix, blobMeta.ID+ext)
 
 	// 2. 初始化流式处理器
 	hash := md5.New()
@@ -106,7 +105,7 @@ func (s *S3Service) UploadFile(fileName string, ctx *gin.Context) (*model2.Blob,
 	}()
 
 	// 5. 上传到MinIO/S3（流式）
-	_, err := s.client.PutObject(
+	_, err = s.client.PutObject(
 		context.Background(),
 		s.bucket,
 		minioKey,
@@ -134,31 +133,27 @@ func (s *S3Service) UploadFile(fileName string, ctx *gin.Context) (*model2.Blob,
 		}
 	}
 
-	fileMeta := &model2.Blob{
-		ID:          fileID,
-		Name:        fileName,
-		Size:        uploadedSize,
-		Path:        minioKey,
-		MD5:         hex.EncodeToString(hash.Sum(nil)),
-		ContentType: contentType,
-		UploadTime:  time.Now(),
-	}
+	blobMeta.MD5 = hex.EncodeToString(hash.Sum(nil))
+	blobMeta.Size = uploadedSize
+	blobMeta.Path = minioKey
+	blobMeta.UploadTime = time.Now()
 
 	// 8. 保存元数据到数据库
-	if err := s.db.Create(fileMeta).Error; err != nil {
+	if err := s.meta.Put(blobMeta); err != nil {
 		// 回滚：尝试删除已上传的文件
 		_ = s.client.RemoveObject(context.Background(), s.bucket, minioKey, minio.RemoveObjectOptions{})
 		return nil, fmt.Errorf("保存文件信息失败: %v", err)
 	}
 
-	return fileMeta, nil
+	return blobMeta, nil
 }
-func (s *S3Service) DownloadFile(c *gin.Context, fileID string) error {
-	var fileMeta model2.Blob
-	if err := s.db.First(&fileMeta, "id = ?", fileID).Error; err != nil {
-		return fmt.Errorf("文件未找到: %v", err)
-	}
+func (s *S3Service) Download(uid string, c *gin.Context, fileID string) error {
+	var fileMeta *model2.Blob
+	var err error
 
+	if fileMeta, err = s.meta.Get(fileID); err != nil {
+		return fmt.Errorf("file not found: %v", err)
+	}
 	// 生成预签名 URL
 	presignedURL, err := s.client.PresignedGetObject(
 		context.Background(),
@@ -175,41 +170,29 @@ func (s *S3Service) DownloadFile(c *gin.Context, fileID string) error {
 	return nil
 }
 
-func (s *S3Service) GetFileList(kw string, offset, limit int) ([]model2.Blob, error) {
-	var files []model2.Blob
-	query := s.db.Offset(offset).Limit(limit).Order("upload_time desc")
+func (s *S3Service) Delete(uid string, fileID string) error {
+	if fileMeta, err := s.meta.Get(fileID); err == nil && fileMeta != nil {
+		if fileMeta.AuthorId != uid && uid != "" {
+			return fmt.Errorf("permission denied")
+		}
 
-	if kw != "" {
-		query = query.Where("name LIKE ?", fmt.Sprintf("%%%s%%", kw))
+		// 从 MinIO 删除文件
+		err := s.client.RemoveObject(
+			context.Background(),
+			s.bucket,
+			fileMeta.Path,
+			minio.RemoveObjectOptions{},
+		)
+		if err != nil {
+			return fmt.Errorf("从 MinIO 删除文件失败: %v", err)
+		}
+
+	} else {
+		return fmt.Errorf("file not found: %v", err)
 	}
 
-	if err := query.Find(&files).Error; err != nil {
-		return nil, fmt.Errorf("获取文件列表失败: %w", err)
+	if err := s.meta.Delete(fileID); err != nil {
+		return fmt.Errorf("failed to delete file info: %v", err)
 	}
-	return files, nil
-}
-
-func (s *S3Service) DeleteFile(fileID string) error {
-	var fileMeta model2.Blob
-	if err := s.db.First(&fileMeta, "id = ?", fileID).Error; err != nil {
-		return fmt.Errorf("文件未找到: %v", err)
-	}
-
-	// 从 MinIO 删除文件
-	err := s.client.RemoveObject(
-		context.Background(),
-		s.bucket,
-		fileMeta.Path,
-		minio.RemoveObjectOptions{},
-	)
-	if err != nil {
-		return fmt.Errorf("从 MinIO 删除文件失败: %v", err)
-	}
-
-	// 从数据库删除记录
-	if err := s.db.Delete(&fileMeta).Error; err != nil {
-		return fmt.Errorf("从数据库删除文件记录失败: %v", err)
-	}
-
 	return nil
 }

@@ -12,6 +12,7 @@ local:
 
 # MYSQL 数据库配置
 db:
+  bleveDir: "C:/Users/russionbear/Documents/GitHub/aw/blob/bleve"  # bleve索引目录
   dbName: "blob"      # 数据库名称
   username: "root"      # 数据库用户名
   password: "mysql"   # 数据库密码
